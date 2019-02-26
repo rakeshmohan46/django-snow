@@ -1,5 +1,5 @@
-class ChangeRequestException(Exception):
+class ChangeOrderException(Exception):
     """
-    Errors occurred during Change Request CRUD operations
+    Errors occurred during Change Order CRUD operations
     """
     pass

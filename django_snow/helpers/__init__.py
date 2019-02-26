@@ -1,6 +1,6 @@
-from .snow_request_handler import ChangeRequestHandler
+from .snow_change_order_handler import ChangeOrderHandler
 
 
 __all__ = [
-    'ChangeRequestHandler'
+    'ChangeOrderHandler'
 ]

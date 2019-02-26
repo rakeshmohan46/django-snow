@@ -5,22 +5,22 @@ from django.conf import settings
 from django.utils import timezone
 from requests.exceptions import HTTPError
 
-from ..models import ChangeRequest
-from .exceptions import ChangeRequestException
+from django_snow.helpers.exceptions import ChangeOrderException
+from django_snow.models import ChangeOrder
 
 
 logger = logging.getLogger('django_snow')
 
 
-class ChangeRequestHandler:
+class ChangeOrderHandler:
     """
-    SNow Change Request Handler.
+    SNow Change Order Handler.
     """
 
     group_guid_dict = {}
 
     # Service Now table REST endpoints
-    CHANGE_REQUEST_TABLE_PATH = '/table/change_request'
+    CHANGE_ORDER_TABLE_PATH = '/table/change_request'
     USER_GROUP_TABLE_PATH = '/table/sys_user_group'
 
     def __init__(self):
@@ -31,12 +31,12 @@ class ChangeRequestHandler:
         self.snow_assignment_group = getattr(settings, 'SNOW_ASSIGNMENT_GROUP', None)
         self.snow_default_cr_type = getattr(settings, 'SNOW_DEFAULT_CHANGE_TYPE', 'standard')
 
-    def create_change_request(self, title, description, assignment_group=None, payload=None):
+    def create_change_order(self, title, description, assignment_group=None, payload=None):
         """
-        Create a change request with the given payload.
+        Create a change order with the given payload.
         """
         client = self._get_client()
-        change_requests = client.resource(api_path=self.CHANGE_REQUEST_TABLE_PATH)
+        change_orders = client.resource(api_path=self.CHANGE_ORDER_TABLE_PATH)
         payload = payload or {}
         payload['short_description'] = title
         payload['description'] = description
@@ -47,17 +47,17 @@ class ChangeRequestHandler:
             payload['assignment_group'] = self.get_snow_group_guid(assignment_group or self.snow_assignment_group)
 
         try:
-            result = change_requests.create(payload=payload)
+            result = change_orders.create(payload=payload)
         except HTTPError as e:
-            logger.error('Could not create change request due to %s', e.response.text)
-            raise ChangeRequestException('Could not create change request due to %s.' % e.response.text)
+            logger.error('Could not create change order due to %s', e.response.text)
+            raise ChangeOrderException('Could not create change order due to %s.' % e.response.text)
 
         # This piece of code is for legacy SNow instances. (probably Geneva and before it)
         if 'error' in result:
-            logger.error('Could not create change request due to %s', result['error'])
-            raise ChangeRequestException('Could not create change request due to %s' % result['error'])
+            logger.error('Could not create change order due to %s', result['error'])
+            raise ChangeOrderException('Could not create change order due to %s' % result['error'])
 
-        change_request = ChangeRequest.objects.create(
+        change_order = ChangeOrder.objects.create(
             sys_id=result['sys_id'],
             number=result['number'],
             title=result['short_description'],
@@ -66,65 +66,65 @@ class ChangeRequestHandler:
             state=result['state']
         )
 
-        return change_request
+        return change_order
 
-    def close_change_request(self, change_request):
-        """Mark the change request as completed."""
+    def close_change_order(self, change_order):
+        """Mark the change order as completed."""
 
-        payload = {'state': ChangeRequest.TICKET_STATE_COMPLETE}
-        change_request.closed_time = timezone.now()
-        self.update_change_request(change_request, payload)
+        payload = {'state': ChangeOrder.TICKET_STATE_COMPLETE}
+        change_order.closed_time = timezone.now()
+        self.update_change_order(change_order, payload)
 
-    def close_change_request_with_error(self, change_request, payload):
-        """Mark the change request as completed with error.
+    def close_change_order_with_error(self, change_order, payload):
+        """Mark the change order as completed with error.
 
         The possible keys for the payload are:
             * `title`
             * `description`
 
-        :param change_request: The change request to be closed
-        :type change_request: :class:`django_snow.models.ChangeRequest`
-        :param payload: A dict of data to be updated while closing change request
+        :param change_order: The change order to be closed
+        :type change_order: :class:`django_snow.models.ChangeOrder`
+        :param payload: A dict of data to be updated while closing change order
         :type payload: dict
         """
-        payload['state'] = ChangeRequest.TICKET_STATE_COMPLETE_WITH_ERRORS
-        change_request.closed_time = timezone.now()
-        self.update_change_request(change_request, payload)
+        payload['state'] = ChangeOrder.TICKET_STATE_COMPLETE_WITH_ERRORS
+        change_order.closed_time = timezone.now()
+        self.update_change_order(change_order, payload)
 
-    def update_change_request(self, change_request, payload):
-        """Update the change request with the data from the kwargs.
+    def update_change_order(self, change_order, payload):
+        """Update the change order with the data from the kwargs.
 
         The possible keys for the payload are:
             * `title`
             * `description`
             * `state`
 
-        :param change_request: The change request to be updated
-        :type change_request: :class:`django_snow.models.ChangeRequest`
-        :param payload: A dict of data to be updated while updating the change request
+        :param change_order: The change order to be updated
+        :type change_order: :class:`django_snow.models.ChangeOrder`
+        :param payload: A dict of data to be updated while updating the change order
         :type payload: dict
         """
         client = self._get_client()
 
         # Get the record and update it
-        change_requests = client.resource(api_path=self.CHANGE_REQUEST_TABLE_PATH)
+        change_orders = client.resource(api_path=self.CHANGE_ORDER_TABLE_PATH)
 
         try:
-            result = change_requests.update(query={'sys_id': change_request.sys_id.hex}, payload=payload)
+            result = change_orders.update(query={'sys_id': change_order.sys_id.hex}, payload=payload)
         except HTTPError as e:
-            logger.error('Could not update change request due to %s', e.response.text)
-            raise ChangeRequestException('Could not update change request due to %s' % e.response.text)
+            logger.error('Could not update change order due to %s', e.response.text)
+            raise ChangeOrderException('Could not update change order due to %s' % e.response.text)
 
         # This piece of code is for legacy SNow instances. (probably Geneva and before it)
         if 'error' in result:
-            logger.error('Could not update change request due to %s', result['error'])
-            raise ChangeRequestException('Could not update change request due to %s' % result['error'])
+            logger.error('Could not update change order due to %s', result['error'])
+            raise ChangeOrderException('Could not update change order due to %s' % result['error'])
 
-        change_request.state = result['state']
-        change_request.title = result['short_description']
-        change_request.description = result['description']
-        change_request.assignment_group_guid = result['assignment_group']['value']
-        change_request.save()
+        change_order.state = result['state']
+        change_order.title = result['short_description']
+        change_order.description = result['description']
+        change_order.assignment_group_guid = result['assignment_group']['value']
+        change_order.save()
 
         return result
 
